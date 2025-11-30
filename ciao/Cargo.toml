@@ -6,6 +6,9 @@ edition = "2024"
 [lib]
 crate-type = ["staticlib"]
 
+[dependencies]
+spin = { version = "0.10.0", default-features = false, features = ["spin_mutex"] }
+
 [features]
 default = []
 std = []
