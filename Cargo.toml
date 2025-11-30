@@ -1,0 +1,9 @@
+[workspace]
+resolver = "3"
+members = ["ciao"]
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
