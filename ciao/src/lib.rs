@@ -18,6 +18,36 @@ fn panic(_info: &PanicInfo) -> ! {
     }
 }
 
+enum Wait<const N: u8> {
+    Wait(u8),
+    Done,
+}
+
+impl<const N: u8> Unpin for Wait<N> {}
+
+impl<const N: u8> Future for Wait<N> {
+    type Output = ();
+
+    fn poll(
+        self: core::pin::Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+    ) -> core::task::Poll<Self::Output> {
+        let s = self.get_mut();
+        match *s {
+            Wait::Wait(count) => {
+                if count < N {
+                    *s = Wait::Wait(count + 1);
+                    core::task::Poll::Pending
+                } else {
+                    *s = Wait::Done;
+                    core::task::Poll::Ready(())
+                }
+            }
+            Wait::Done => core::task::Poll::Ready(()),
+        }
+    }
+}
+
 static TASK: SpinMutex<Option<FutAlias>> = SpinMutex::new(None);
 
 type FutAlias = impl Future + Send;
@@ -27,8 +57,9 @@ fn alias_fn() -> FutAlias {
     testfut()
 }
 
-async fn testfut() -> u32 {
-    0u32
+async fn testfut() -> () {
+    let x = Wait::Wait::<8>(0);
+    x.await;
 }
 
 // Initialize state machine. Must be called at least once, before trying to progress with
