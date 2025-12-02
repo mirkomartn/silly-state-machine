@@ -163,3 +163,59 @@ where
         }
     }
 }
+
+// Await two futures at once, and keep polling until both of them complete.
+// For purpose of illustration, we don't make any assumption about the two
+// futures implementing Unpin.
+pub(crate) struct Join<A, B>
+where
+    A: Future<Output = ()>,
+    B: Future<Output = ()>,
+{
+    a: A,
+    b: B,
+    donea: bool,
+    doneb: bool,
+}
+
+impl<A, B> Future for Join<A, B>
+where
+    A: Future<Output = ()>,
+    B: Future<Output = ()>,
+{
+    type Output = ();
+
+    fn poll(
+        self: core::pin::Pin<&mut Self>,
+        cx: &mut core::task::Context<'_>,
+    ) -> core::task::Poll<Self::Output> {
+        // We consume the pinned pointer to self to obtain a mutable ref.
+        // Since we don't assume inner futures are Unpin, we have to use
+        // the unsafe methods. But otherwise the mechanism doesn't differ
+        // much from what we've done in Future impl for Select. We obtain
+        // a mutable reference by consuming the Pinned reference, and
+        // with it we can obtain mutable references to inner futures that
+        // we then pin and use for polling the futures.
+        //
+        // Safety: we don't move the futures anywhere or invalidate them
+        // by any other means, so the pinning guarantees are upheld from
+        // our side.
+        let this = unsafe { self.get_unchecked_mut() };
+        let first = unsafe { core::pin::Pin::new_unchecked(&mut this.a) };
+        let second = unsafe { core::pin::Pin::new_unchecked(&mut this.b) };
+
+        if !this.donea && core::task::Poll::Ready(()) == first.poll(cx) {
+            this.donea = true;
+        }
+
+        if !this.doneb && core::task::Poll::Ready(()) == second.poll(cx) {
+            this.doneb = true;
+        }
+
+        if this.donea && this.doneb {
+            core::task::Poll::Ready(())
+        } else {
+            core::task::Poll::Pending
+        }
+    }
+}
