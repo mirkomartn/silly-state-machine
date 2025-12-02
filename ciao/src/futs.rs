@@ -219,3 +219,24 @@ where
         }
     }
 }
+
+pub fn select<A, B>(a: A, b: B) -> Select<A, B>
+where
+    A: Future<Output = ()> + Unpin,
+    B: Future<Output = ()> + Unpin,
+{
+    Select { a, b, done: false }
+}
+
+pub fn join<A, B>(a: A, b: B) -> Join<A, B>
+where
+    A: Future<Output = ()>,
+    B: Future<Output = ()>,
+{
+    Join {
+        a,
+        b,
+        donea: false,
+        doneb: false,
+    }
+}
