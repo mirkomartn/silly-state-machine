@@ -88,3 +88,78 @@ impl Future for ButtonPressed {
         }
     }
 }
+
+// Await two futures at once, but stop as soon as one of
+// them completes. Return enum indicates which future was
+// the first to complete, or in case that the compound
+// future is being polled after completion, to warn that
+// this is the case by returnin None. If both futures
+// complete before compound future is polled again, the
+// return value will indicate that the first future is
+// the "winner", and second future won't get pulled to its
+// completion at all.
+pub(crate) struct Select<A, B>
+where
+    A: Future<Output = ()> + Unpin,
+    B: Future<Output = ()> + Unpin,
+{
+    a: A,
+    b: B,
+    done: bool,
+}
+
+// We impose a simplifying constraint, just to avoid unsafe code.
+impl<A, B> Unpin for Select<A, B>
+where
+    A: Future<Output = ()> + Unpin,
+    B: Future<Output = ()> + Unpin,
+{
+}
+
+pub(crate) enum FirstSecond {
+    First,
+    Second,
+}
+
+impl<A, B> Future for Select<A, B>
+where
+    A: Future<Output = ()> + Unpin,
+    B: Future<Output = ()> + Unpin,
+{
+    type Output = Option<FirstSecond>;
+
+    fn poll(
+        self: core::pin::Pin<&mut Self>,
+        cx: &mut core::task::Context<'_>,
+    ) -> core::task::Poll<Self::Output> {
+        // We consume the pinned pointer to self to obtain a mutable ref.
+        // This is all safe, because we are guaranteed that both futures
+        // we're selecting between implement Unpin, so pinning does not
+        // make a difference. For the same reason, we can use the safe
+        // methods to construct pinned pointers to struct members. If
+        // the members wouldn't implement Pin, then it would be up to
+        // us to uphold the pinning guarantees or bear the consequences
+        // of the ensuing UB.
+        let this = self.get_mut();
+        let first = core::pin::Pin::new(&mut this.a);
+        let second = core::pin::Pin::new(&mut this.b);
+
+        // While Select as Future is safe to poll after it returned Ready,
+        // we have no such guarantees for the two inner futures, so we
+        // must make sure to not poll them again afterwards. Alternative to
+        // returning None, we could remember which future completed and
+        // just keep returning that, although that seems more likely to
+        // lead to some logic bugs later down the road.
+        if this.done == true {
+            core::task::Poll::Ready(None)
+        } else if let core::task::Poll::Ready(()) = first.poll(cx) {
+            this.done = true;
+            core::task::Poll::Ready(Some(FirstSecond::First))
+        } else if let core::task::Poll::Ready(()) = second.poll(cx) {
+            this.done = true;
+            core::task::Poll::Ready(Some(FirstSecond::Second))
+        } else {
+            core::task::Poll::Pending
+        }
+    }
+}
