@@ -27,12 +27,34 @@ type FutAlias = impl Future + Send;
 
 #[define_opaque(FutAlias)]
 fn alias_fn() -> FutAlias {
-    testfut()
+    get_mail_or_gtfo()
 }
 
-async fn testfut() -> () {
-    let x = Wait::Wait::<8>(0);
-    x.await;
+// A silly feedback mechanism, to let C know a message was received *under*
+// conditions checked by this state machine.
+unsafe extern "C" {
+    fn got_mail();
+}
+
+async fn get_mail_or_gtfo() -> () {
+    // Simple state machine that checks if there were at least 9 ticks since
+    // the last received message and a button was pressed, if those two
+    // conditions are met, then we stop listening for messages.
+    loop {
+        match select(
+            join(ButtonPressed {}, Wait::Wait::<8>(0)),
+            MessageReceived {},
+        )
+        .await
+        {
+            Some(FirstSecond::First) => break,
+            // Safety: unsafe, it's a ffi C function call.
+            Some(FirstSecond::Second) => unsafe {
+                got_mail();
+            },
+            None => (),
+        };
+    }
 }
 
 // Initialize state machine. Must be called at least once, before trying to progress with
