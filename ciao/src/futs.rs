@@ -32,3 +32,59 @@ impl<const N: u8> Future for Wait<N> {
         }
     }
 }
+
+// Normally, you could pass or share ownership of peripherals between C and Rust, or
+// setup callback that can be called from irq handlers, share mutable statics, etc. But
+// for the illustrative purposes we can just expose two functions that our state machine
+// can use to querry external state.
+//
+// Safety: as safe as external C functions can get, no pointer passing, etc., although,
+// we don't know what they reallly do, so tread carefully.
+unsafe extern "C" {
+    fn msg_received() -> bool;
+    fn button_pressed() -> bool;
+}
+
+pub(crate) struct MessageReceived();
+
+// Strictly speaking, this is not necessary, because we *don't care* about the
+// pinned pointer passed to the poll method, but it does make a difference when
+// composing futures, as some methods might require Unpin.
+impl Unpin for MessageReceived {}
+
+impl Future for MessageReceived {
+    type Output = ();
+
+    fn poll(
+        self: core::pin::Pin<&mut Self>,
+        _cx: &mut core::task::Context<'_>,
+    ) -> core::task::Poll<Self::Output> {
+        // Safety: not safe, FFI call into C part.
+        if unsafe { msg_received() } == true {
+            core::task::Poll::Ready(())
+        } else {
+            core::task::Poll::Pending
+        }
+    }
+}
+
+pub(crate) struct ButtonPressed();
+
+// See comment to impl Unpin for MessageReceived.
+impl Unpin for ButtonPressed {}
+
+impl Future for ButtonPressed {
+    type Output = ();
+
+    fn poll(
+        self: core::pin::Pin<&mut Self>,
+        _cx: &mut core::task::Context<'_>,
+    ) -> core::task::Poll<Self::Output> {
+        // Safety: not safe, FFI call into C part.
+        if unsafe { button_pressed() } == true {
+            core::task::Poll::Ready(())
+        } else {
+            core::task::Poll::Pending
+        }
+    }
+}
