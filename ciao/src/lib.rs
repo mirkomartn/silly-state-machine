@@ -36,10 +36,10 @@ unsafe extern "C" {
     fn got_mail();
 }
 
+// A simple silly state machine that checks if there were at least 8
+// ticks since the last received message and a button was pressed in
+// between, if these two conditions are met, we stop listening for messages.
 async fn get_mail_or_gtfo() -> () {
-    // Simple state machine that checks if there were at least 9 ticks since
-    // the last received message and a button was pressed, if those two
-    // conditions are met, then we stop listening for messages.
     loop {
         match select(
             join(ButtonPressed {}, Wait::Wait::<8>(0)),
@@ -107,13 +107,14 @@ pub extern "C" fn step() -> bool {
             // its lifetime ends.
             match unsafe { core::pin::Pin::new_unchecked(&mut fut).poll(&mut cx) } {
                 // Terminal state reached, don't re-store future back into the static.
-                core::task::Poll::Ready(_) => {
-                    return true;
+                core::task::Poll::Ready(_) => (),
+                core::task::Poll::Pending => {
+                    *task = Some(fut);
+                    return false;
                 }
-                core::task::Poll::Pending => *task = Some(fut),
             }
         }
     }
 
-    return false;
+    return true;
 }
