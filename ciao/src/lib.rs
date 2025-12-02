@@ -7,6 +7,9 @@ use core::{
 };
 use spin::mutex::SpinMutex;
 
+mod futs;
+use futs::*;
+
 #[cfg(not(feature = "std"))]
 use core::panic::PanicInfo;
 
@@ -15,36 +18,6 @@ use core::panic::PanicInfo;
 fn panic(_info: &PanicInfo) -> ! {
     loop {
         ()
-    }
-}
-
-enum Wait<const N: u8> {
-    Wait(u8),
-    Done,
-}
-
-impl<const N: u8> Unpin for Wait<N> {}
-
-impl<const N: u8> Future for Wait<N> {
-    type Output = ();
-
-    fn poll(
-        self: core::pin::Pin<&mut Self>,
-        _cx: &mut Context<'_>,
-    ) -> core::task::Poll<Self::Output> {
-        let s = self.get_mut();
-        match *s {
-            Wait::Wait(count) => {
-                if count < N {
-                    *s = Wait::Wait(count + 1);
-                    core::task::Poll::Pending
-                } else {
-                    *s = Wait::Done;
-                    core::task::Poll::Ready(())
-                }
-            }
-            Wait::Done => core::task::Poll::Ready(()),
-        }
     }
 }
 
